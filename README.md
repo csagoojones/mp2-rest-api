@@ -1,0 +1,8 @@
+# MP2 REST API
+'''
+
+This class project is a REST (Represational State Transfer) API (Application Programming Interface) that takes in and then temorarily stores datasets before processing them using functions from the data pipeline. Users are able to send HTTP requests to this application, such as uploading a csv data file using POST /upload, and receive JSON responses. POST /upload stores the data and returns its ID, filename, row, column name and counts. GET /datasets/{dataset_id} returns up to a certain limit of rows of the stored dataset as well as the number of rows, returning a 404 message if its ID does not exist. POST /datasets/{dataset_id}/ process takes in a JSON configuration for the required numerical columns, missing values, duplicate removal, and outliars. It then will validate and clean the data using methods from the MP1 completed modules in data_pipeline and gives back a cleaning report. Finally, GET /health returns the status of the API and the version. Logging middleware assigns each request an eight-character request ID for each request that passes through and will log the path, method used, status code and duration. To test the interface, pytest and TestClient are used in the tests folder. 
+
+How to run the REST API: Use command line `python -m uvicorn main:app --reload` in the terminal, then open 'http://127.0.0.1:8000/docs' on a web browser.
+
+How to run the tests: Use command line `python -m pytest tests -v`in the terminal.
