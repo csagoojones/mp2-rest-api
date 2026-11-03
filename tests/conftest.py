@@ -5,7 +5,8 @@ from fastapi.testclient import TestClient
  
 from main import app, storage
  
- 
+
+ # allows us to give each test a TestClient
 @pytest.fixture
 def client():
     storage.clear()
@@ -13,13 +14,14 @@ def client():
         yield test_client
     storage.clear()
  
- 
+ #reads sample data and returns it as bytes
 @pytest.fixture
 def sample_csv_bytes():
     filepath = Path("fixtures") / "sample_data.csv"
     return filepath.read_bytes()
  
  
+ # uploads the sample CSV and returns the dataset ID
 @pytest.fixture
 def uploaded_dataset_id(client, sample_csv_bytes):
     response = client.post(
@@ -35,7 +37,7 @@ def uploaded_dataset_id(client, sample_csv_bytes):
     assert response.status_code == 200
     return response.json()["id"]
  
- 
+ # provides the body for the processing request
 @pytest.fixture
 def processing_body():
     return {

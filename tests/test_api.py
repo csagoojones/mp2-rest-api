@@ -13,7 +13,7 @@ def test_upload_csv(client, sample_csv_bytes):
  
  
 def test_process_and_retrieve(client, uploaded_dataset_id, processing_body):
-    # Process the uploaded dataset
+    # process the uploaded dataset
     response = client.post(
         f"/datasets/{uploaded_dataset_id}/process",
         json=processing_body,
@@ -25,7 +25,7 @@ def test_process_and_retrieve(client, uploaded_dataset_id, processing_body):
     assert body["cleaning_report"]["rows_before"] == 5
     assert body["cleaning_report"]["rows_after"] == 3
  
-    # Retrieve it and check that storage now holds the processed data
+    # retrieve it and check if storage has the processed data
     response = client.get(f"/datasets/{uploaded_dataset_id}")
  
     assert response.status_code == 200

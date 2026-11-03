@@ -18,7 +18,7 @@ class DatasetInfo(BaseModel):
     column_names: list[str]
  
  
-# Part 2 request model
+# Part 2 -- request model
 class ValidationSettings(BaseModel):
     required_columns: list[str] = Field(default_factory=list)
     numeric_columns: list[str] = Field(default_factory=list)
@@ -47,7 +47,7 @@ class ProcessConfig(BaseModel):
     processing: ProcessingSettings = Field(default_factory=ProcessingSettings)
  
  
-# Part 2 response model
+# Part 2 -- response model
 class ProcessingReport(BaseModel):
     id: int
     validation_rows_removed: int

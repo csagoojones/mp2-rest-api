@@ -1,3 +1,6 @@
+# middleware.py
+# records request IDs, status codes and durations
+
 import logging
 import time
 import uuid
@@ -17,12 +20,8 @@ async def log_requests(request: Request, call_next):
     try:
         response = await call_next(request)
     except Exception:
-        # TODO 1: full traceback goes to the server log only, never to the client
-        logger.error(
-            "request_id=%s Unhandled exception during %s %s",
-            request_id, request.method, request.url.path,
-            exc_info=True,
-        )
+        # TODO 1: traceback goes to the server log only, never to the client
+        logger.error(f"Unexpected failure: request_id={request_id}", exc_info=True)
         response = JSONResponse(
             status_code=500,
             content={"detail": "Internal server error"}
@@ -36,13 +35,13 @@ async def log_requests(request: Request, call_next):
         f"status={response.status_code} duration={duration_ms:.1f}ms"
     )
  
-    # TODO 3: choose the log level from the status code
-    if response.status_code >= 500:
-        logger.error(message)
-    elif response.status_code >= 400:
+    # TODO 3: INFO below 400, WARNING for 400-499, ERROR for 500 and above
+    if response.status_code < 400:
+        logger.info(message)
+    elif response.status_code < 500:
         logger.warning(message)
     else:
-        logger.info(message)
+        logger.error(message)
  
     response.headers["X-Request-ID"] = request_id
     return response

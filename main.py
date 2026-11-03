@@ -5,6 +5,9 @@ from pathlib import Path
  
 import pandas as pd
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+
+
+# Importing all of the packages in from data_pipeline
  
 from data_pipeline import create_cleaning_report, process_data, validate_dataframe
 from src import (
@@ -19,7 +22,7 @@ from src import (
  
 setup_logging(verbose=True)
 logger = logging.getLogger(__name__)
- 
+
 app = FastAPI(title="Data Processing API", version="1.0.0")
 app.middleware("http")(log_requests)
 storage = DatasetStorage()
@@ -28,116 +31,101 @@ storage = DatasetStorage()
 @app.get("/health", response_model=HealthResponse)
 def health_check():
     """Return the application status and version."""
-    return HealthResponse(status="ok", version=app.version)
+    return {"status": "ok", "version": app.version}
  
  
 @app.post("/upload", response_model=DatasetInfo)
 async def upload_dataset(file: UploadFile = File(...)):
     """Read and store a CSV upload."""
     filename = file.filename or ""
-    suffix = Path(filename).suffix.lower()
  
-    # 1. Only accept .csv files
+    # Only accept .csv files
+    suffix = Path(filename).suffix.lower()
     if suffix != ".csv":
-        logger.warning("Unsupported file format: %s", suffix or "(none)")
+        logger.warning(f"Unsupported file format: {suffix}")
         raise HTTPException(
             status_code=400,
             detail=f"Unsupported file format '{suffix}'. Please upload a .csv file.",
         )
  
-    # 2. Read the bytes and parse them as CSV
+    # This part will read the bytes of the file and parse as a csv
     contents = await file.read()
     try:
         df = pd.read_csv(io.BytesIO(contents))
-    except pd.errors.EmptyDataError:
-        logger.warning("Empty CSV upload: %s", filename)
-        raise HTTPException(status_code=400, detail="The uploaded CSV file is empty.")
-    except (pd.errors.ParserError, UnicodeDecodeError) as e:
-        logger.warning("Could not parse CSV %s: %s", filename, e)
+    except (pd.errors.EmptyDataError, pd.errors.ParserError, UnicodeDecodeError) as error:
+        logger.warning(f"Cannot read CSV: {error}")
         raise HTTPException(
             status_code=400,
-            detail="Could not read the file as CSV. Make sure it is a valid, UTF-8 encoded CSV.",
+            detail="Cannot read the uploaded CSV. Make sure it is a valid, non-empty CSV file.",
         )
  
-    # 3. Save it and return its metadata
+    # saves the data and stores the metadaata
     dataset_id = storage.save(df, filename)
     metadata = storage.get_metadata(dataset_id)
     logger.info(
-        "Uploaded dataset: id=%d, filename=%s, rows=%d",
-        dataset_id, filename, metadata["rows"],
+        f"Uploaded dataset: id={dataset_id}, filename={filename}, rows={metadata['rows']}"
     )
-    return DatasetInfo(**metadata)
+    return metadata
  
  
 @app.get("/datasets/{dataset_id}")
 def get_dataset(dataset_id: int, limit: int = Query(default=100, ge=1)):
     """Return up to limit rows from a stored dataset."""
-    df = storage.get(dataset_id)  # a copy, so storage is never changed here
+    df = storage.get(dataset_id)  # storage isnt changed here
     if df is None:
-        logger.warning("Dataset not found: %d", dataset_id)
-        raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found.")
+        logger.warning(f"Dataset not found: {dataset_id}")
+        raise HTTPException(status_code=404, detail="Dataset not found")
  
     records = json.loads(df.head(limit).to_json(orient="records"))
-    logger.info("Retrieved dataset: id=%d, returned_rows=%d", dataset_id, len(records))
+    logger.info(f"Retrieved dataset: id={dataset_id}, returned_rows={len(records)}")
     return {"id": dataset_id, "data": records, "total_rows": len(df)}
  
  
-@app.post(
-    "/datasets/{dataset_id}/process",
-    response_model=ProcessingReport,
-)
+@app.post("/datasets/{dataset_id}/process", response_model=ProcessingReport)
 def process_dataset(dataset_id: int, config: ProcessConfig):
     """Validate and process a stored dataset using MP1 functions."""
-    # 1. Retrieve a copy (404 check stays outside the try block)
+    # gets a copy 
     df = storage.get(dataset_id)
     if df is None:
-        logger.warning("Dataset not found: %d", dataset_id)
-        raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found.")
+        logger.warning(f"Dataset not found: {dataset_id}")
+        raise HTTPException(status_code=404, detail="Dataset not found")
  
-    # 2. Convert the request model to the dict structure MP1 expects
-    config_dict = config.model_dump()
-    required_columns = config_dict["validation"]["required_columns"]
-    numeric_columns = config_dict["validation"]["numeric_columns"]
+    # Converts the request model to dictionary
+    settings = config.model_dump()
+    required_columns = settings["validation"]["required_columns"]
+    numeric_columns = settings["validation"]["numeric_columns"]
  
-    # 3. Every numeric column must exist in the data
-    missing_numeric = [col for col in numeric_columns if col not in df.columns]
-    if missing_numeric:
-        logger.warning(
-            "Numeric columns not in dataset %d: %s", dataset_id, missing_numeric
-        )
-        raise HTTPException(
-            status_code=400,
-            detail=f"Numeric columns not found in dataset: {missing_numeric}",
-        )
+    #Every configured numeric column must exist
+    for col in numeric_columns:
+        if col not in df.columns:
+            logger.warning(f"Numeric column not found: {col}")
+            raise HTTPException(
+                status_code=400, detail=f"Numeric column not found: {col}"
+            )
  
     try:
-        # 4. Validate and record how many rows were removed
-        rows_original = len(df)
+        #Validate and record how many rows removed
+        rows_loaded = len(df)
         validated = validate_dataframe(df, required_columns, numeric_columns)
-        validation_rows_removed = rows_original - len(validated)
-        logger.info(
-            "Validated dataset: id=%d, %d -> %d rows",
-            dataset_id, rows_original, len(validated),
-        )
+        validation_rows_removed = rows_loaded - len(validated)
+        logger.info(f"Validation complete: id={dataset_id}, {rows_loaded} → {len(validated)} rows")
  
-        # 5. Process a copy, then compare it with the validated data
-        validated_copy = validated.copy()
-        processed = process_data(validated, config_dict)
-        cleaning_report = create_cleaning_report(validated_copy, processed)
+        df_before = validated.copy()
+        df_after = process_data(validated, settings)
+        report = create_cleaning_report(df_before, df_after)
     except ValueError as error:
-        logger.warning("Processing failed for dataset %d: %s", dataset_id, error)
+        logger.warning(f"Processing failed: id={dataset_id}, {error}")
         raise HTTPException(status_code=400, detail=str(error))
  
-    # 6. Only save once validation and processing both succeeded
-    storage.update(dataset_id, processed)
+    # update storage once validation and processing both work
+    storage.update(dataset_id, df_after)
     logger.info(
-        "Processed dataset: id=%d, validation_removed=%d, rows_before=%d, rows_after=%d",
-        dataset_id, validation_rows_removed,
-        cleaning_report["rows_before"], cleaning_report["rows_after"],
+        f"Processed dataset: id={dataset_id}, validation_removed={validation_rows_removed}, "
+        f"rows_before={report['rows_before']}, rows_after={report['rows_after']}"
     )
  
     return {
         "id": dataset_id,
         "validation_rows_removed": validation_rows_removed,
-        "cleaning_report": cleaning_report,
+        "cleaning_report": report,
     }

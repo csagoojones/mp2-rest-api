@@ -13,44 +13,41 @@ class DatasetStorage:
         self._counter += 1
         dataset_id = self._counter
         self._store[dataset_id] = {"filename": filename, "df": df.copy()}
-        logger.debug("Stored dataset: id=%d, rows=%d", dataset_id, len(df))
+        logger.debug(f"Stored dataset: id={dataset_id}, rows={len(df)}")
         return dataset_id
  
     def get(self, dataset_id):
         """Return a copy of the stored DataFrame, or None."""
-        entry = self._store.get(dataset_id)
-        if entry is None:
-            logger.debug("Dataset not in storage: id=%s", dataset_id)
+        item = self._store.get(dataset_id)
+        if item is None:
+            logger.debug(f"Dataset not in storage: id={dataset_id}")
             return None
-        logger.debug(
-            "Retrieved dataset copy: id=%d, rows=%d", dataset_id, len(entry["df"])
-        )
-        return entry["df"].copy()
+        logger.debug(f"Retrieved dataset copy: id={dataset_id}, rows={len(item['df'])}")
+        return item["df"].copy()
  
     def get_metadata(self, dataset_id):
         """Return the dataset metadata, or None."""
-        entry = self._store.get(dataset_id)
-        if entry is None:
-            logger.debug("No metadata, dataset not in storage: id=%s", dataset_id)
+        item = self._store.get(dataset_id)
+        if item is None:
+            logger.debug(f"No metadata, dataset not in storage: id={dataset_id}")
             return None
-        df = entry["df"]  # computed from the current data, so it stays accurate
-        metadata = {
+        df = item["df"] 
+        logger.debug(f"Retrieved metadata: id={dataset_id}")
+        return {
             "id": dataset_id,
-            "filename": entry["filename"],
+            "filename": item["filename"],
             "rows": len(df),
             "columns": len(df.columns),
             "column_names": [str(col) for col in df.columns],
         }
-        logger.debug("Retrieved metadata: id=%d", dataset_id)
-        return metadata
  
     def update(self, dataset_id, df):
         """Replace an existing dataset; return True, or False if missing."""
         if dataset_id not in self._store:
-            logger.debug("Update failed, dataset not in storage: id=%s", dataset_id)
+            logger.debug(f"Update failed, dataset not in storage: id={dataset_id}")
             return False
         self._store[dataset_id]["df"] = df.copy()
-        logger.debug("Updated dataset: id=%d, rows=%d", dataset_id, len(df))
+        logger.debug(f"Updated dataset: id={dataset_id}, rows={len(df)}")
         return True
  
     def clear(self):
